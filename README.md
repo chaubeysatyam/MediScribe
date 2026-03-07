@@ -5,7 +5,7 @@
   <img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" />
 </p>
 
-# MediScribe - AI-Powered Clinical Documentation System
+# MediScribe 
 
 MediScribe transforms spoken clinical notes into structured, actionable medical records - entirely on-device, with no cloud dependency. By converting natural speech into comprehensive documentation, it allows healthcare professionals to focus on patient care rather than administrative tasks.
 
