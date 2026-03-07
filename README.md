@@ -5,9 +5,31 @@
   <img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" />
 </p>
 
-# MediScribe 
+<h1 align="center">MediScribe</h1>
+<p align="center"><em>Spoken clinical notes → structured medical records. Entirely on-device. No cloud. No compromise.</em></p>
 
-MediScribe transforms spoken clinical notes into structured, actionable medical records - entirely on-device, with no cloud dependency. By converting natural speech into comprehensive documentation, it allows healthcare professionals to focus on patient care rather than administrative tasks.
+---
+
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center"><strong>Full Overview</strong></td>
+    <td align="center"><strong>Voice Input</strong></td>
+  </tr>
+  <tr>
+    <td><img src="FullOverview.png" alt="MediScribe Overview" width="100%"/></td>
+    <td><img src="voiceinput.png" alt="Voice Input" width="100%"/></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>SOAP Notes</strong></td>
+    <td align="center"><strong>Encounter History</strong></td>
+  </tr>
+  <tr>
+    <td><img src="soapnotes.png" alt="SOAP Notes" width="100%"/></td>
+    <td><img src="history.png" alt="History" width="100%"/></td>
+  </tr>
+</table>
 
 ---
 
@@ -23,7 +45,7 @@ Clinical documentation remains one of the most time-consuming aspects of healthc
 | Delayed Billing | Manual ICD-10 code assignment extends the revenue cycle, delaying hospital reimbursement and increasing administrative overhead |
 | Patient Safety | Time pressures can lead to overlooked drug interactions, missed allergy alerts, and incomplete clinical assessments |
 
-MediScribe addresses these challenges by enabling healthcare providers to simply speak - and let MediScribe handle the rest.
+MediScribe addresses these challenges by enabling healthcare providers to simply speak — and let MediScribe handle the rest.
 
 ---
 
@@ -31,7 +53,7 @@ MediScribe addresses these challenges by enabling healthcare providers to simply
 
 ### Voice-First Documentation
 - Speak naturally without needing any special format or syntax
-- Record directly from any device with a microphone - phone, laptop, or tablet
+- Record directly from any device with a microphone — phone, laptop, or tablet
 - Real-time transcription powered by Faster-Whisper
 - Alternatively, type or paste a transcript manually
 
@@ -59,7 +81,7 @@ MediScribe addresses these challenges by enabling healthcare providers to simply
 
 ### Clinical Safety Alerts
 - Detects drug-drug interactions (e.g., Ibuprofen + Lisinopril)
-- Includes NSAID-Aspirin cross-reactivity monitoring - automatically flags NSAIDs for patients with aspirin allergies
+- Includes NSAID-Aspirin cross-reactivity monitoring — automatically flags NSAIDs for patients with aspirin allergies
 - Identifies red flag symptoms including thunderclap headache, neurological deficits, and signs of septic arthritis
 - Categorized by severity: Critical, Warning, or Info
 
@@ -67,39 +89,23 @@ MediScribe addresses these challenges by enabling healthcare providers to simply
 All patient encounters are securely stored locally in SQLite, allowing clinicians to browse, review, or delete past encounters while preserving full clinical detail for future reference.
 
 ### Privacy-First Architecture
-MediScribe operates completely offline - no patient data ever leaves the local machine. The system runs efficiently on consumer-grade NVIDIA GPUs (RTX 4050+) using 4-bit quantization, maintaining HIPAA-ready data sovereignty with a local SQLite database.
+MediScribe operates completely offline — no patient data ever leaves the local machine. The system runs efficiently on consumer-grade NVIDIA GPUs (RTX 4050+) using 4-bit quantization, maintaining HIPAA-ready data sovereignty with a local SQLite database.
 
 ---
 
 ## Use Cases
 
 ### Shift Handovers
-When a day shift physician records a patient encounter, MediScribe automatically generates a structured SOAP note. The incoming night shift team can instantly access a comprehensive clinical summary complete with alerts, medications, and pending actions - eliminating the gaps traditionally caused by handwritten notes.
+When a day shift physician records a patient encounter, MediScribe automatically generates a structured SOAP note. The incoming night shift team can instantly access a comprehensive clinical summary complete with alerts, medications, and pending actions — eliminating the gaps traditionally caused by handwritten notes.
 
 ### Bedside Documentation
-A nurse at the bedside can simply tap the microphone on their phone and speak naturally about the patient's condition. MediScribe handles transcription and structuring automatically - no clipboard, pen, or laptop required.
+A nurse at the bedside can simply tap the microphone on their phone and speak naturally about the patient's condition. MediScribe handles transcription and structuring automatically — no clipboard, pen, or laptop required.
 
 ### Emergency/OPD Workflow
-Following a patient examination, the physician speaks their findings aloud while MediScribe generates a complete note including differentials, recommended labs, imaging studies, and ICD-10 codes - all before the patient leaves the consultation room.
+Following a patient examination, the physician speaks their findings aloud while MediScribe generates a complete note including differentials, recommended labs, imaging studies, and ICD-10 codes — all before the patient leaves the consultation room.
 
 ### Medical Image Review
 A chest X-ray, CT scan, or MRI can be uploaded directly, where MedGemma Vision analyzes the image and automatically attaches findings and impressions to the patient encounter.
-
----
-
-## Screenshots
-
-### Main Interface
-![MediScribe Overview](FullOverview.png)
-
-### Voice Input
-![Voice Input](voiceinput.png)
-
-### SOAP Notes
-![SOAP Notes](soapnotes.png)
-
-### Encounter History
-![History](history.png)
 
 ---
 
@@ -188,15 +194,13 @@ flowchart LR
 
 ### Prerequisites
 
-Before installing MediScribe, ensure your environment meets the following requirements:
-
 - **Python 3.10+**
 - **NVIDIA GPU** with CUDA support (RTX 4050 or better recommended)
 - **HuggingFace account** with access to [google/medgemma-4b-it](https://huggingface.co/google/medgemma-4b-it)
 
 ### Installation
 
-#### Step 1 - Install Dependencies
+#### Step 1 — Install Dependencies
 ```bash
 python 1stcell.PY
 ```
@@ -204,7 +208,7 @@ python 1stcell.PY
 
 This step installs PyTorch (CUDA 12.1), Transformers, Faster-Whisper, FastAPI, and all necessary dependencies.
 
-#### Step 2 - Authenticate with HuggingFace
+#### Step 2 — Authenticate with HuggingFace
 ```bash
 python 2ndcell.py
 ```
@@ -213,7 +217,7 @@ You can either:
 - Set it as an environment variable: `export HF_TOKEN=hf_your_token_here`
 - Or paste it interactively when prompted
 
-#### Step 3 - Launch MediScribe
+#### Step 3 — Launch MediScribe
 ```bash
 python 3finalcell.py
 ```
@@ -290,7 +294,7 @@ flowchart TB
     style D fill:#38a169,color:#fff
 ```
 
-The built-in NSAID safety guard evaluates both the generated treatment plan and the patient's current medication list - ensuring that even if a physician does not verbally mention ibuprofen, MediScribe will flag it if the patient is already taking it.
+The built-in NSAID safety guard evaluates both the generated treatment plan and the patient's current medication list — ensuring that even if a physician does not verbally mention ibuprofen, MediScribe will flag it if the patient is already taking it.
 
 ---
 
@@ -300,10 +304,10 @@ The built-in NSAID safety guard evaluates both the generated treatment plan and 
 |---|---|
 | Laptop/Desktop | Run the server and open `localhost:7860` in your browser |
 | Mobile Phone | Connect to the same WiFi network and open `http://<server-ip>:7860` in your mobile browser |
-| Tablet | Same as mobile - fully responsive interface |
+| Tablet | Same as mobile — fully responsive interface |
 | Hospital Workstation | Run the server on a centralized GPU machine and access from any workstation on the network |
 
-Tip: Bookmark the URL on your mobile device for quick bedside access. The microphone button functions natively in mobile browsers.
+> **Tip:** Bookmark the URL on your mobile device for quick bedside access. The microphone button functions natively in mobile browsers.
 
 ---
 
@@ -325,9 +329,6 @@ Tip: Bookmark the URL on your mobile device for quick bedside access. The microp
 
 MediScribe builds on several open-source projects:
 
-- [MedGemma](https://huggingface.co/google/medgemma-4b-it) by Google - Clinical foundation model
-- [Faster-Whisper](https://github.com/SYSTRAN/faster-whisper) - CTranslate2-accelerated speech recognition
-- [FastAPI](https://fastapi.tiangolo.com/) - High-performance Python web framework
-
----
-
+- [MedGemma](https://huggingface.co/google/medgemma-4b-it) by Google — Clinical foundation model
+- [Faster-Whisper](https://github.com/SYSTRAN/faster-whisper) — CTranslate2-accelerated speech recognition
+- [FastAPI](https://fastapi.tiangolo.com/) — High-performance Python web framework
