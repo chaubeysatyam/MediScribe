@@ -58,60 +58,95 @@ function checkGenerateBtn() {
     generateBtn.disabled = !hasText;
 }
 
-// Recording
-let isProcessingMic = false;
-on(micBtn, "click", async () => {
-    if (isProcessingMic) return;
-    if (isRecording) {
-        stopRecording();
-    } else {
-        isProcessingMic = true;
-        await startRecording();
-        isProcessingMic = false;
-    }
-});
+// Recording — simple 3-state machine: idle | recording | processing
+// REC_STATE prevents any async flag races
+let REC_STATE = "idle"; // "idle" | "recording" | "processing"
+// Pass mouse/touch clicks through SVG children straight to the button
+if (micBtn) micBtn.querySelectorAll('svg, path, circle, rect, polyline').forEach(e => e.style.pointerEvents = 'none');
 
-async function startRecording() {
-    try {
-        const s = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const types = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"];
-        let mt = "audio/webm";
-        for (const t of types) if (MediaRecorder.isTypeSupported(t)) { mt = t; break }
-        mediaRecorder = new MediaRecorder(s, { mimeType: mt });
-        audioChunks = [];
-        mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data) };
-        mediaRecorder.onstop = async () => {
-            s.getTracks().forEach(t => t.stop());
-            const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
-            await processAudio(blob);
-        };
-        mediaRecorder.start(1000);
-        isRecording = true;
-        micBtn.classList.add("recording"); micContainer.classList.add("recording");
-        recordStatus.textContent = "Recording... Tap to stop";
-        recordTimer.classList.add("active"); seconds = 0; updateTimer();
-        timerInterval = setInterval(() => { seconds++; updateTimer() }, 1000);
-        audioContext = new (window.AudioContext || window.webkitAudioContext);
-        analyser = audioContext.createAnalyser();
-        audioContext.createMediaStreamSource(s).connect(analyser);
-        analyser.fftSize = 256; drawWave();
-    } catch (e) { if (recordStatus) recordStatus.textContent = "Microphone access denied"; console.error(e) }
+// Use 'click' for main handler - guaranteed user gesture for getUserMedia
+// Also listen on 'touchend' specifically to ensure mobile works without delay
+let _lastMicFire = 0;
+function handleMicToggle(e) {
+    // Debounce 400ms to prevent click+touchend double-fire on mobile
+    const now = Date.now();
+    if (now - _lastMicFire < 400) return;
+    _lastMicFire = now;
+    // DO NOT call e.preventDefault() — Chrome needs native click to count as user gesture for getUserMedia
+
+    if (REC_STATE === "recording") {
+        _doStop();
+        return;
+    }
+    if (REC_STATE !== "idle") return;
+    REC_STATE = "processing";
+    _doStart().catch(err => {
+        REC_STATE = "idle";
+        if (recordStatus) recordStatus.textContent = "Microphone access denied";
+        console.error(err);
+    });
+}
+micBtn.addEventListener('click', handleMicToggle);
+micBtn.addEventListener('touchend', handleMicToggle); // explicit touchend for mobile
+
+// Also expose globally so nothing else blocks it
+window.stopRecording = _doStop;
+
+async function _doStart() {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const types = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"];
+    let mt = "audio/webm";
+    for (const t of types) if (MediaRecorder.isTypeSupported(t)) { mt = t; break; }
+
+    mediaRecorder = new MediaRecorder(stream, { mimeType: mt });
+    audioChunks = [];
+
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+    mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        REC_STATE = "processing";
+        const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
+        await processAudio(blob);
+        REC_STATE = "idle";
+    };
+
+    mediaRecorder.start(250); // collect chunks every 250ms for reliability
+    REC_STATE = "recording";
+    isRecording = true; // keep legacy flag in sync
+
+    micBtn.classList.add("recording");
+    micContainer.classList.add("recording");
+    recordStatus.textContent = "Recording… tap again to stop";
+    recordTimer.classList.add("active");
+    seconds = 0; updateTimer();
+    timerInterval = setInterval(() => { seconds++; updateTimer(); }, 1000);
+
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioContext.createAnalyser();
+    audioContext.createMediaStreamSource(stream).connect(analyser);
+    analyser.fftSize = 256;
+    drawWave();
 }
 
-function stopRecording() {
-    if (!isRecording) return;
-    isRecording = false;
+function _doStop() {
+    if (REC_STATE !== "recording") return; // nothing to stop
+    isRecording = false; // sync legacy flag
     if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
-    if (micBtn) micBtn.classList.remove("recording");
-    if (micContainer) micContainer.classList.remove("recording");
-    if (recordStatus) recordStatus.textContent = "Processing audio...";
-    if (recordTimer) recordTimer.classList.remove("active");
+    micBtn.classList.remove("recording");
+    micContainer.classList.remove("recording");
+    recordStatus.textContent = "Processing audio…";
+    recordTimer.classList.remove("active");
     clearInterval(timerInterval);
     if (animFrameId) cancelAnimationFrame(animFrameId);
-    if (audioContext) { audioContext.close(); }
+    if (audioContext) audioContext.close();
     audioContext = null;
     analyser = null;
+    // REC_STATE will become "processing" inside mediaRecorder.onstop → then "idle"
 }
+
+// Legacy alias so nothing else breaks
+function stopRecording() { _doStop(); }
+function startRecording() { return _doStart(); }
 
 function updateTimer() {
     const m = String(Math.floor(seconds / 60)).padStart(2, "0"), s = String(seconds % 60).padStart(2, "0");
