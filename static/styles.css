@@ -420,12 +420,19 @@ body {
     align-items: center;
     justify-content: center;
     cursor: pointer;
+    position: relative;          /* establish stacking context */
+    z-index: 10;                 /* always above siblings */
+    touch-action: manipulation;  /* removes 300ms tap delay on mobile */
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
     box-shadow: 0 12px 30px rgba(15, 158, 165, 0.2);
     transition: transform 0.2s var(--ease), box-shadow 0.2s var(--ease), color 0.2s var(--ease), background 0.2s var(--ease);
 }
 
 .mic-btn:hover {
-    transform: translateY(-1px) scale(1.03);
+    box-shadow: 0 16px 40px rgba(15, 158, 165, 0.38);
+    border-color: rgba(15, 158, 165, 0.5);
 }
 
 .mic-btn.recording {
@@ -433,6 +440,18 @@ body {
     border-color: rgba(220, 38, 38, 0.2);
     color: #fff;
     box-shadow: 0 15px 34px rgba(185, 28, 28, 0.36);
+}
+
+/* Prevent SVG children from swallowing mouse/touch/pointer clicks */
+.mic-btn * {
+    pointer-events: none;
+    user-select: none;
+}
+
+/* Also ensure the mic container doesn't create an opaque hit blocker */
+.mic-container {
+    position: relative;
+    z-index: 10;
 }
 
 .record-status {
