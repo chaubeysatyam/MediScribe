@@ -9,6 +9,9 @@
 <p align="center"><em>Spoken clinical notes → structured medical records. Entirely on-device. No cloud. No compromise.</em></p>
 
 ---
+## 🌐 Youtube Demo
+
+### 🔗 **https://youtu.be/ML411woZ6jU**
 
 ## Screenshots
 
