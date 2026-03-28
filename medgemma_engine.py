@@ -82,7 +82,7 @@ def extract_entities(transcript, patient_age=None, patient_sex=None):
         + "vitals, medications, allergies, medical_history, family_history, "
         + "social_history, duration."
     )
-    result = _generate(system + "\n\nTranscript:\n" + transcript)
+    result = _generate(system + "\n\nTranscript:\n" + transcript, max_tokens=512)
     print("[Entities] Raw: " + result[:200])
     data = _parse_json(result)
     clean = {}
@@ -118,7 +118,7 @@ def generate_soap(transcript, entities, patient_age=None, patient_sex=None):
     )
     context = system + "\n\nTranscript:\n" + transcript
     context += "\n\nEntities:\n" + json.dumps(entities.model_dump(), indent=2)
-    result = _generate(context, max_tokens=1500)
+    result = _generate(context, max_tokens=1024)
     print("[SOAP] Raw output (" + str(len(result)) + " chars): " + result[:300])
     data = _parse_json(result)
     print("[SOAP] Parsed keys: " + str(list(data.keys()) if isinstance(data, dict) else type(data)))
@@ -165,7 +165,7 @@ def check_drug_interactions(medications, patient_age=None, patient_sex=None):
         + "alert_type, severity, title, description, recommendation. "
         + "If none found return []"
     )
-    result = _generate(system + "\n\nMedications: " + ", ".join(medications))
+    result = _generate(system + "\n\nMedications: " + ", ".join(medications), max_tokens=300)
     data = _parse_json(result)
     if isinstance(data, list):
         return [ClinicalAlert(**x) for x in data if isinstance(x, dict)]
@@ -191,7 +191,7 @@ def detect_red_flags(entities, patient_age=None, patient_sex=None):
         + "alert_type (set to 'red_flag'), severity (critical/high/medium/low), title, description, recommendation. "
         + "If no red flags are present in the entities, return []."
     )
-    result = _generate(system + "\n\nEntities:\n" + json.dumps(entities.model_dump(), indent=2))
+    result = _generate(system + "\n\nEntities:\n" + json.dumps(entities.model_dump(), indent=2), max_tokens=350)
 
     data = _parse_json(result)
     if isinstance(data, list):
@@ -220,7 +220,7 @@ def suggest_icd10(assessment, entities_json="", patient_age=None, patient_sex=No
     context = system + "\n\nAssessment:\n" + assessment
     if entities_json:
         context += "\n\nExtracted Entities:\n" + entities_json
-    result = _generate(context)
+    result = _generate(context, max_tokens=300)
     print("[ICD-10] Raw: " + result[:200])
     data = _parse_json(result)
     if isinstance(data, list):
@@ -248,7 +248,7 @@ def suggest_imaging(entities, assessment, patient_age=None, patient_sex=None):
     )
     context = system + "\n\nAssessment:\n" + assessment
     context += "\n\nEntities:\n" + json.dumps(entities.model_dump(), indent=2)
-    result = _generate(context)
+    result = _generate(context, max_tokens=300)
     print("[Imaging] Raw: " + result[:200])
     data = _parse_json(result)
     if isinstance(data, list):
@@ -285,7 +285,7 @@ def analyze_medical_image(image, filename="uploaded_image"):
     ]}]
     print("[ImageAnalysis] Analyzing " + filename + " ...")
     t0 = time.time()
-    result = pipe(text=messages, max_new_tokens=1024)
+    result = pipe(text=messages, max_new_tokens=600)
     raw = result[0]["generated_text"][-1]["content"].strip()
     print("[ImageAnalysis] Done in " + str(round(time.time()-t0, 1)) + "s, raw: " + raw[:200])
     data = _parse_json(raw)
