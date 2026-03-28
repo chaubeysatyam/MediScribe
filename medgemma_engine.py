@@ -236,7 +236,7 @@ def suggest_icd10(assessment, entities_json="", patient_age=None, patient_sex=No
     context = system + "\n\nAssessment:\n" + assessment
     if entities_json:
         context += "\n\nExtracted Entities:\n" + entities_json
-    result = _generate(context, max_tokens=300)
+    result = _generate(context, max_tokens=420)
     print("[ICD-10] Raw: " + result[:200])
     data = _parse_json(result)
     if isinstance(data, list):
