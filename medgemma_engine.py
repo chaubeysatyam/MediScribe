@@ -2,9 +2,13 @@ import json
 import re
 import time
 import traceback
+import os
+import gc
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from models import ClinicalEntity, SOAPNote, ClinicalAlert, ICD10Code, ImagingSuggestion, ImageAnalysis, EncounterResult
 from config import ICD10_CONFIDENCE_THRESHOLD, MEDGEMMA_MODEL
+
+os.environ.setdefault("PYTORCH_ALLOC_CONF", "expandable_segments:True")
 
 pipe = None
 MODEL_ID = MEDGEMMA_MODEL
@@ -12,11 +16,23 @@ MODEL_ID = MEDGEMMA_MODEL
 
 def load_medgemma():
     global pipe
-    from transformers import pipeline as hf_pipeline
-    print(f"[MedGemma] Loading {MODEL_ID} via pipeline ...")
+    import torch
+    from transformers import pipeline as hf_pipeline, BitsAndBytesConfig
+    print("[MedGemma] Loading " + MODEL_ID + " with 4-bit quantization (NF4) ...")
     t0 = time.time()
-    pipe = hf_pipeline("image-text-to-text", model=MODEL_ID)
-    print(f"[MedGemma] Ready in {time.time()-t0:.1f}s")
+    bnb_cfg = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.float16,
+        bnb_4bit_use_double_quant=True,
+    )
+    pipe = hf_pipeline(
+        "image-text-to-text",
+        model=MODEL_ID,
+        model_kwargs={"quantization_config": bnb_cfg},
+        device_map="auto",
+    )
+    print("[MedGemma] Ready in " + str(round(time.time()-t0, 1)) + "s")
     return pipe
 
 
@@ -392,6 +408,10 @@ def run_clinical_pipeline(transcript, patient_age=None, patient_sex=None):
         print("[Pipeline] 1/6 FAILED: " + str(e))
         traceback.print_exc()
 
+    import torch
+    torch.cuda.empty_cache()
+    gc.collect()
+
     print("[Pipeline] 2/6 Generating SOAP ...")
     try:
         encounter.soap_note = generate_soap(transcript, encounter.entities, patient_age, patient_sex)
@@ -400,6 +420,9 @@ def run_clinical_pipeline(transcript, patient_age=None, patient_sex=None):
         errors.append("SOAP: " + str(e))
         print("[Pipeline] 2/6 FAILED: " + str(e))
         traceback.print_exc()
+
+    torch.cuda.empty_cache()
+    gc.collect()
 
     entities_json = json.dumps(encounter.entities.model_dump(), indent=2)
 
