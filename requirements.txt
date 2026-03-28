@@ -10,3 +10,5 @@ fastapi
 python-multipart
 pydantic
 python-dotenv
+sarvamai
+Pillow

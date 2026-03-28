@@ -2,7 +2,6 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
 from datetime import datetime
 import uuid
-
 class ClinicalEntity(BaseModel):
     chief_complaint: str = ""
     symptoms: List[str] = Field(default_factory=list)
@@ -13,42 +12,36 @@ class ClinicalEntity(BaseModel):
     family_history: List[str] = Field(default_factory=list)
     social_history: List[str] = Field(default_factory=list)
     duration: str = ""
-
 class SOAPNote(BaseModel):
     subjective: str = ""
     objective: str = ""
     assessment: str = ""
     plan: str = ""
-
 class ClinicalAlert(BaseModel):
     alert_type: str = ""
     severity: str = "info"
     title: str = ""
     description: str = ""
     recommendation: str = ""
-
 class ICD10Code(BaseModel):
     code: str = ""
     description: str = ""
     confidence: float = 0.0
-
 class ImagingSuggestion(BaseModel):
-    modality: str = ""      # CT, MRI, X-ray, Ultrasound, etc.
-    body_region: str = ""   # Brain, Chest, Abdomen, etc.
-    indication: str = ""    # Why this scan is needed
-    urgency: str = "routine" # stat, urgent, routine
-    contrast: str = ""      # with/without contrast, N/A
+    modality: str = ""                                        
+    body_region: str = ""                                
+    indication: str = ""                             
+    urgency: str = "routine"                        
+    contrast: str = ""                                  
     notes: str = ""
-
 class ImageAnalysis(BaseModel):
     filename: str = ""
-    image_type: str = ""           # X-ray, CT, MRI, Ultrasound, etc.
-    body_part: str = ""            # Chest, Brain, Abdomen, etc.
-    findings: str = ""             # Detailed findings
-    impression: str = ""           # Overall impression/diagnosis
+    image_type: str = ""                                             
+    body_part: str = ""                                         
+    findings: str = ""                                
+    impression: str = ""                                         
     abnormalities: List[str] = Field(default_factory=list)
-    recommendations: str = ""     # Follow-up recommendations
-
+    recommendations: str = ""                                
 class EncounterResult(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
@@ -61,7 +54,6 @@ class EncounterResult(BaseModel):
     imaging_suggestions: List[ImagingSuggestion] = Field(default_factory=list)
     image_analyses: List[ImageAnalysis] = Field(default_factory=list)
     processing_time_ms: float = 0.0
-
 class GenerateRequest(BaseModel):
     transcript: str
     patient_age: Optional[int] = None

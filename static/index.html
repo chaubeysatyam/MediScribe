@@ -6,15 +6,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MediScribe — AI Clinical Documentation</title>
     <meta name="description" content="Privacy-first clinical documentation powered by MedGemma">
-    <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap"
-        rel="stylesheet">
-    <link rel="stylesheet" href="/static/styles.css?v=4">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/styles.css?v=5">
 </head>
 
 <body>
 
-    <!-- Animated background orbs -->
     <div class="bg-orbs">
         <div class="orb orb-1"></div>
         <div class="orb orb-2"></div>
@@ -44,12 +41,8 @@
 
     <nav class="nav-tabs">
         <div class="nav-track">
-            <button class="nav-tab active" data-view="record" id="tabRecord">
-                Recording
-            </button>
-            <button class="nav-tab" data-view="results" id="tabResults">
-                SOAP Note
-            </button>
+            <button class="nav-tab active" data-view="record" id="tabRecord">Recording</button>
+            <button class="nav-tab" data-view="results" id="tabResults">SOAP Note</button>
             <button class="nav-tab" data-view="imaging" id="tabImaging">
                 Imaging
                 <span class="badge badge-imaging" id="imagingBadge">0</span>
@@ -58,17 +51,13 @@
                 Alerts
                 <span class="badge" id="alertsBadge">0</span>
             </button>
-            <button class="nav-tab" data-view="history" id="tabHistory">
-                History
-            </button>
+            <button class="nav-tab" data-view="history" id="tabHistory">History</button>
         </div>
     </nav>
 
     <main class="main">
-        <!-- RECORD TAB -->
         <section class="view active" id="viewRecord">
             <div class="record-section">
-                <!-- Patient Info -->
                 <div class="patient-bar">
                     <div class="patient-fields">
                         <div class="input-group">
@@ -88,10 +77,25 @@
                                 <option value="other">Other</option>
                             </select>
                         </div>
+                        <div class="input-group">
+                            <label>Language</label>
+                            <select id="transcriptLanguage">
+                                <option value="en">English</option>
+                                <option value="hi">Hindi (हिन्दी)</option>
+                                <option value="bn">Bengali (বাংলা)</option>
+                                <option value="ta">Tamil (தமிழ்)</option>
+                                <option value="te">Telugu (తెలుగు)</option>
+                                <option value="kn">Kannada (ಕನ್ನಡ)</option>
+                                <option value="ml">Malayalam (മലയാളം)</option>
+                                <option value="gu">Gujarati (ગુજરાતી)</option>
+                                <option value="mr">Marathi (मराठी)</option>
+                                <option value="pa">Punjabi (ਪੰਜਾਬੀ)</option>
+                                <option value="ur">Urdu (اردو)</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Mic Area -->
                 <div class="mic-area">
                     <div class="record-timer" id="recordTimer">00:00</div>
                     <div class="mic-container" id="micContainer">
@@ -108,10 +112,16 @@
                 <div class="waveform-container"><canvas class="waveform-canvas" id="waveformCanvas"></canvas></div>
 
                 <div class="divider-line"><span>or type / paste transcript</span></div>
-                <textarea class="transcript-input" id="transcriptInput"
-                    placeholder="Doctor: Good morning, what brings you in today?&#10;Patient: I've been having persistent headaches for about two weeks..."></textarea>
 
-                <!-- Image Upload -->
+                <div class="transcript-wrapper">
+                    <textarea class="transcript-input" id="transcriptInput"
+                        placeholder="Doctor: Good morning, what brings you in today?&#10;Patient: I've been having persistent headaches for about two weeks..."></textarea>
+                    <div class="transcript-toolbar">
+                        <span class="char-counter" id="charCounter">0 chars</span>
+                        <button class="toolbar-btn" id="clearTranscriptBtn" title="Clear transcript">&#x2715; Clear</button>
+                    </div>
+                </div>
+
                 <div class="divider-line"><span>attach medical images</span></div>
                 <div class="upload-area" id="uploadArea">
                     <label class="upload-zone" for="imageUpload" id="uploadZone">
@@ -122,8 +132,8 @@
                             <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
                         </svg>
                         <span class="upload-text">Drop X-ray, CT, MRI images here or <em>browse</em></span>
-                        <span class="upload-hint">Supports JPEG, PNG, DICOM • Analyzed by MedGemma Vision</span>
-                        <input type="file" id="imageUpload" accept="image/*" multiple style="display:none">
+                        <span class="upload-hint">Supports JPEG, PNG, TIFF &bull; Analyzed by MedGemma Vision</span>
+                        <input type="file" id="imageUpload" accept="image/jpeg,image/png,image/tiff,image/*" multiple style="display:none">
                     </label>
                     <div class="image-preview-grid" id="imagePreviewGrid"></div>
                 </div>
@@ -138,14 +148,13 @@
 
                 <div class="live-transcript card" id="liveTranscript" style="display:none;width:100%;max-width:720px;">
                     <div class="card-header">
-                        <h2>📝 Live Transcript</h2>
+                        <h2>&#x1F4DD; Live Transcript</h2>
                     </div>
                     <div class="card-body" id="liveTranscriptText"></div>
                 </div>
             </div>
         </section>
 
-        <!-- SOAP -->
         <section class="view" id="viewResults">
             <div id="resultsContent">
                 <div class="empty-state">
@@ -160,7 +169,6 @@
             </div>
         </section>
 
-        <!-- IMAGING -->
         <section class="view" id="viewImaging">
             <div id="imagingContent">
                 <div class="empty-state">
@@ -176,7 +184,6 @@
             </div>
         </section>
 
-        <!-- ALERTS -->
         <section class="view" id="viewAlerts">
             <div id="alertsContent">
                 <div class="empty-state">
@@ -190,11 +197,13 @@
             </div>
         </section>
 
-        <!-- HISTORY -->
         <section class="view" id="viewHistory">
             <div class="card">
                 <div class="card-header">
-                    <h2>📁 Encounter History</h2>
+                    <h2>&#x1F4C1; Encounter History</h2>
+                    <div class="history-search">
+                        <input type="text" id="historySearch" placeholder="Search patient or complaint..." style="background:var(--surface);border:1px solid var(--border);color:var(--text-primary);border-radius:8px;padding:6px 12px;font-size:13px;outline:none;width:220px;">
+                    </div>
                 </div>
                 <div class="card-body">
                     <div class="history-list" id="historyList">
@@ -208,17 +217,20 @@
                             <p>Processed encounters are stored locally on your machine</p>
                         </div>
                     </div>
+                    <div class="history-pagination" id="historyPagination" style="display:none;margin-top:16px;display:flex;gap:8px;justify-content:center;align-items:center;">
+                        <button class="toolbar-btn" id="histPrevBtn">&#x2190; Prev</button>
+                        <span id="histPageLabel" style="font-size:13px;color:var(--text-muted)">Page 1</span>
+                        <button class="toolbar-btn" id="histNextBtn">Next &#x2192;</button>
+                    </div>
                 </div>
             </div>
         </section>
 
-        <!-- DETAIL -->
         <section class="view" id="viewDetail">
             <div id="detailContent"></div>
         </section>
     </main>
 
-    <!-- Processing Overlay -->
     <div class="processing-overlay" id="processingOverlay">
         <div class="processing-card">
             <div class="processing-header">
@@ -229,25 +241,18 @@
                 </div>
             </div>
             <div class="processing-steps">
-                <div class="processing-step" id="step1"><span class="step-num">1</span><span
-                        class="step-text">Extracting clinical entities</span><span class="step-check">✓</span></div>
-                <div class="processing-step" id="step2"><span class="step-num">2</span><span
-                        class="step-text">Generating SOAP note</span><span class="step-check">✓</span></div>
-                <div class="processing-step" id="step3"><span class="step-num">3</span><span class="step-text">Checking
-                        drug interactions</span><span class="step-check">✓</span></div>
-                <div class="processing-step" id="step4"><span class="step-num">4</span><span class="step-text">Detecting
-                        red flags</span><span class="step-check">✓</span></div>
-                <div class="processing-step" id="step5"><span class="step-num">5</span><span
-                        class="step-text">Suggesting ICD-10 codes</span><span class="step-check">✓</span></div>
-                <div class="processing-step" id="step6"><span class="step-num">6</span><span
-                        class="step-text">Suggesting imaging studies</span><span class="step-check">✓</span></div>
-                <div class="processing-step" id="step7"><span class="step-num">7</span><span class="step-text">Analyzing
-                        uploaded images</span><span class="step-check">✓</span></div>
+                <div class="processing-step" id="step1"><span class="step-num">1</span><span class="step-text">Extracting clinical entities</span><span class="step-check">✓</span></div>
+                <div class="processing-step" id="step2"><span class="step-num">2</span><span class="step-text">Generating SOAP note</span><span class="step-check">✓</span></div>
+                <div class="processing-step" id="step3"><span class="step-num">3</span><span class="step-text">Checking drug interactions</span><span class="step-check">✓</span></div>
+                <div class="processing-step" id="step4"><span class="step-num">4</span><span class="step-text">Detecting red flags</span><span class="step-check">✓</span></div>
+                <div class="processing-step" id="step5"><span class="step-num">5</span><span class="step-text">Suggesting ICD-10 codes</span><span class="step-check">✓</span></div>
+                <div class="processing-step" id="step6"><span class="step-num">6</span><span class="step-text">Suggesting imaging studies</span><span class="step-check">✓</span></div>
+                <div class="processing-step" id="step7"><span class="step-num">7</span><span class="step-text">Analyzing uploaded images</span><span class="step-check">✓</span></div>
             </div>
         </div>
     </div>
 
-    <script src="/static/app.js?v=5"></script>
+    <script src="/static/app.js?v=6"></script>
 </body>
 
 </html>

@@ -1,10 +1,8 @@
-# Cell 8 - Load Models + Start Server (Local PC)
-# Run cells 1-5 first, then run THIS cell.
-
 import sys, os, time, threading
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# ── Step 1: Load MedGemma ──
+from config import PORT, WHISPER_MODEL
+
 print("=" * 60)
 print("  STEP 1/3: Loading MedGemma via pipeline ...")
 print("=" * 60)
@@ -15,19 +13,17 @@ else:
     medgemma_engine.load_medgemma()
     print(f"[Cell 8] MedGemma loaded! pipe = {type(medgemma_engine.pipe)}")
 
-# ── Step 2: Load Whisper ──
 print()
 print("=" * 60)
-print("  STEP 2/3: Loading Whisper ...")
+print(f"  STEP 2/3: Loading Whisper ({WHISPER_MODEL}) ...")
 print("=" * 60)
 from transcriber import load_whisper, whisper_model
 if whisper_model is not None:
     print("[Cell 8] Whisper already loaded. Skipping.")
 else:
-    load_whisper("base")
+    load_whisper(WHISPER_MODEL)
     print("[Cell 8] Whisper loaded!")
 
-# ── Step 3: Start Server ──
 print()
 print("=" * 60)
 print("  STEP 3/3: Starting server ...")
@@ -35,8 +31,6 @@ print("=" * 60)
 
 import uvicorn
 from server import app
-
-PORT = 7860
 
 def _run():
     uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="info")
@@ -46,7 +40,6 @@ t.start()
 print(f"[Cell 8] Server starting on port {PORT} ...")
 time.sleep(3)
 
-# Health check
 import urllib.request
 try:
     r = urllib.request.urlopen(f"http://127.0.0.1:{PORT}/health", timeout=5)
@@ -62,7 +55,6 @@ print()
 print("[Cell 8] Server is running. Press Ctrl+C to stop.")
 print()
 
-# ── Keep alive loop ──
 try:
     counter = 0
     while True:

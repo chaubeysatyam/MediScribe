@@ -1,0 +1,15 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+mediscribe.db
+uploads/
+*.png
+*.jpg
+*.jpeg
+*.tiff
+*.gif
+*.bmp
+README.md
+.DS_Store
+Thumbs.db
