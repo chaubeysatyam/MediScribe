@@ -176,18 +176,23 @@ def detect_red_flags(entities, patient_age=None, patient_sex=None):
     ctx = _build_patient_ctx(patient_age, patient_sex)
     system = (
         ctx
-        + "You are an emergency triage specialist. Check for RED FLAG symptoms. "
-        + "Pay special attention to: "
-        + "- Headache red flags: thunderclap onset, worst headache of life, fever with neck stiffness, "
-        + "neurological deficits, new onset after age 50, progressive worsening. "
-        + "- Joint/extremity red flags: signs of systemic inflammatory conditions if joint swelling is present, "
-        + "potential septic arthritis, compartment syndrome, DVT. "
-        + "- General red flags: unexplained weight loss, night sweats, progressive symptoms. "
+        + "You are an emergency triage specialist reviewing clinical entities. "
+        + "Your task is to identify RED FLAG symptoms that are EXPLICITLY present in the provided entities. "
+        + "STRICT RULES - you MUST follow all of these: "
+        + "1. ONLY flag symptoms that are DIRECTLY stated in the entities JSON below. "
+        + "2. NEVER infer, assume, or extrapolate symptoms not mentioned. "
+        + "3. NEVER flag thunderclap onset unless the word 'sudden' or 'thunderclap' or 'worst ever' appears explicitly. "
+        + "4. NEVER flag fever or neck stiffness unless explicitly mentioned. "
+        + "5. NEVER flag neurological deficits unless explicitly mentioned. "
+        + "6. NEVER flag new onset after age 50 unless the patient age is explicitly over 50. "
+        + "7. If a symptom is absent from the entities, do NOT create an alert for it. "
+        + "8. Return ONLY alerts for symptoms that are clearly documented in the entities below. "
         + "Return ONLY a valid JSON array of objects with keys: "
-        + "alert_type, severity (critical/high/medium/low), title, description, recommendation. "
-        + "If none return []"
+        + "alert_type (set to 'red_flag'), severity (critical/high/medium/low), title, description, recommendation. "
+        + "If no red flags are present in the entities, return []."
     )
-    result = _generate(system + "\n\n" + json.dumps(entities.model_dump(), indent=2))
+    result = _generate(system + "\n\nEntities:\n" + json.dumps(entities.model_dump(), indent=2))
+
     data = _parse_json(result)
     if isinstance(data, list):
         return [ClinicalAlert(**x) for x in data if isinstance(x, dict)]
