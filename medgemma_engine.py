@@ -14,7 +14,7 @@ def load_medgemma():
     import torch
     from transformers import pipeline as hf_pipeline
     device = 0 if torch.cuda.is_available() else -1
-    dtype = torch.float16 if device == 0 else torch.float32
+    dtype = torch.bfloat16 if device == 0 else torch.float32
     print(f"[MedGemma] Loading {MODEL_ID} via pipeline on {'cuda' if device == 0 else 'cpu'} ({dtype}) ...")
     t0 = time.time()
     try:

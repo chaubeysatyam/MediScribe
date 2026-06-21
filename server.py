@@ -7,6 +7,8 @@ import json
 import time
 import traceback
 import base64
+import uuid
+import threading
 from typing import List, Optional
 from PIL import Image
 import io
@@ -245,6 +247,117 @@ async def api_generate_stream(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+JOBS = {}
+JOBS_LOCK = threading.Lock()
+
+
+def _set_job(job_id, **kw):
+    with JOBS_LOCK:
+        JOBS.setdefault(job_id, {})
+        JOBS[job_id].update(kw)
+
+
+def _run_job(job_id, transcript, patient_name, patient_age, patient_sex, image_data):
+    t0 = time.time()
+    encounter = None
+    try:
+        for event in run_clinical_pipeline_streaming(transcript, patient_age, patient_sex):
+            if event.get("status") == "complete" and "result" in event:
+                encounter = event["result"]
+            else:
+                _set_job(job_id, event=event)
+
+        if encounter is None:
+            encounter = EncounterResult(transcript=transcript)
+        encounter.patient_name = patient_name
+
+        total_with_images = 7 + len(image_data)
+        for idx, (filename, img_bytes) in enumerate(image_data, start=1):
+            step_num = 7 + idx
+            _set_job(job_id, event={"step": step_num, "total": total_with_images, "status": "running", "label": f"Analyzing image: {filename}..."})
+            img_t0 = time.time()
+            try:
+                pil_image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+                safe_name = f"{int(time.time())}_{filename}"
+                save_path = os.path.join(UPLOAD_DIR, safe_name)
+                pil_image.save(save_path)
+                analysis = analyze_medical_image(pil_image, filename=safe_name)
+                encounter.image_analyses.append(analysis)
+                img_ms = round((time.time() - img_t0) * 1000, 1)
+                _set_job(job_id, event={"step": step_num, "total": total_with_images, "status": "done", "label": f"Image analyzed: {filename}", "time_ms": img_ms})
+            except Exception as e:
+                img_ms = round((time.time() - img_t0) * 1000, 1)
+                print(f"[Server] Image {filename} analysis failed: {e}")
+                traceback.print_exc()
+                _set_job(job_id, event={"step": step_num, "total": total_with_images, "status": "error", "label": f"Image failed: {filename}", "time_ms": img_ms})
+
+        encounter.processing_time_ms = round((time.time() - t0) * 1000, 1)
+        save_encounter(encounter.model_dump())
+        done_step = total_with_images if image_data else 7
+        _set_job(job_id, done=True, result=encounter.model_dump(),
+                 event={"step": done_step, "total": done_step, "status": "complete", "label": "Pipeline complete"})
+    except Exception as e:
+        print(f"[Server] Job EXCEPTION: {e}")
+        traceback.print_exc()
+        if encounter is None:
+            encounter = EncounterResult(transcript=transcript, patient_name=patient_name)
+            encounter.soap_note = SOAPNote(
+                subjective=transcript.strip(),
+                objective="Pipeline error occurred.",
+                assessment=str(e),
+                plan="Restart and retry.",
+            )
+        encounter.processing_time_ms = round((time.time() - t0) * 1000, 1)
+        save_encounter(encounter.model_dump())
+        _set_job(job_id, done=True, result=encounter.model_dump(),
+                 event={"step": 7, "total": 7, "status": "complete", "label": "Pipeline complete (with errors)"})
+
+
+@app.post("/api/generate-async")
+async def api_generate_async(
+    transcript: str = Form(...),
+    patient_name: str = Form(""),
+    patient_age: Optional[int] = Form(None),
+    patient_sex: Optional[str] = Form(None),
+    images: List[UploadFile] = File(default=[]),
+):
+    if not transcript.strip():
+        raise HTTPException(400, "Empty transcript")
+
+    image_data = []
+    for img_file in images:
+        try:
+            img_bytes = await img_file.read()
+            if len(img_bytes) > 0:
+                image_data.append((img_file.filename, img_bytes))
+        except Exception as e:
+            print(f"[Server] Failed to read image {img_file.filename}: {e}")
+
+    job_id = str(uuid.uuid4())
+    _set_job(job_id, done=False, result=None,
+             event={"step": 0, "total": 7 + len(image_data), "status": "running", "label": "Starting pipeline..."})
+
+    t = threading.Thread(
+        target=_run_job,
+        args=(job_id, transcript, patient_name, patient_age, patient_sex, image_data),
+        daemon=True,
+    )
+    t.start()
+    return {"job_id": job_id}
+
+
+@app.get("/api/status/{job_id}")
+async def api_status(job_id: str):
+    with JOBS_LOCK:
+        job = JOBS.get(job_id)
+        if job is None:
+            raise HTTPException(404, "Unknown job")
+        resp = {"event": job.get("event"), "done": job.get("done", False)}
+        if job.get("done"):
+            resp["result"] = job.get("result")
+    return resp
 
 
 @app.post("/api/full-pipeline")

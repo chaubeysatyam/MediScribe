@@ -252,6 +252,20 @@ function applyStepEvent(event) {
     }
 }
 
+function finishGenerate(result) {
+    if (processingProgressBar) processingProgressBar.style.width = "100%";
+    currentResult = result;
+    hideProcessing();
+    renderResults(currentResult);
+    renderAlerts(currentResult);
+    renderImaging(currentResult);
+    loadHistory();
+    switchToTab("results");
+    recordStatus.textContent = "Tap to start recording";
+    uploadedFiles = [];
+    imagePreviewGrid.innerHTML = "";
+}
+
 async function streamGenerate(transcript) {
     const fd = new FormData();
     fd.append("transcript", transcript);
@@ -263,55 +277,36 @@ async function streamGenerate(transcript) {
     });
 
     try {
-        const response = await fetch(`${API}/api/generate-stream`, { method: "POST", body: fd });
+        const startRes = await fetch(`${API}/api/generate-async`, { method: "POST", body: fd });
+        if (!startRes.ok) throw new Error(`HTTP ${startRes.status}`);
+        const { job_id } = await startRes.json();
+        if (!job_id) throw new Error("No job_id returned");
 
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-
-            const lines = buffer.split("\n");
-            buffer = lines.pop();
-
-            for (const line of lines) {
-                if (!line.startsWith("data: ")) continue;
-                const jsonStr = line.slice(6).trim();
-                if (!jsonStr) continue;
-
+        await new Promise((resolve, reject) => {
+            let polling = false;
+            const timer = setInterval(async () => {
+                if (polling) return;
+                polling = true;
                 try {
-                    const event = JSON.parse(jsonStr);
-
-                    if (event.status === "complete" && event.result) {
-                        if (processingProgressBar) processingProgressBar.style.width = "100%";
-                        currentResult = event.result;
-                        hideProcessing();
-                        renderResults(currentResult);
-                        renderAlerts(currentResult);
-                        renderImaging(currentResult);
-                        loadHistory();
-                        switchToTab("results");
-                        recordStatus.textContent = "Tap to start recording";
-                        uploadedFiles = [];
-                        imagePreviewGrid.innerHTML = "";
-                    } else {
-                        applyStepEvent(event);
+                    const r = await fetch(`${API}/api/status/${job_id}`);
+                    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                    const data = await r.json();
+                    if (data.event) applyStepEvent(data.event);
+                    if (data.done) {
+                        clearInterval(timer);
+                        finishGenerate(data.result);
+                        resolve();
                     }
-                } catch (parseErr) {
-                    console.warn("SSE parse error:", parseErr, jsonStr);
+                } catch (err) {
+                    clearInterval(timer);
+                    reject(err);
+                } finally {
+                    polling = false;
                 }
-            }
-        }
+            }, 500);
+        });
     } catch (e) {
-        console.warn("SSE stream failed, falling back to /api/generate:", e);
+        console.warn("Async generate failed, falling back to /api/generate:", e);
         await fallbackGenerate(transcript);
     }
 }
