@@ -11,10 +11,22 @@ MODEL_ID = "google/medgemma-4b-it"
 def load_medgemma():
     """Load MedGemma using the pipeline() API - confirmed working."""
     global pipe
+    import torch
     from transformers import pipeline as hf_pipeline
-    print(f"[MedGemma] Loading {MODEL_ID} via pipeline ...")
+    device = 0 if torch.cuda.is_available() else -1
+    dtype = torch.float16 if device == 0 else torch.float32
+    print(f"[MedGemma] Loading {MODEL_ID} via pipeline on {'cuda' if device == 0 else 'cpu'} ({dtype}) ...")
     t0 = time.time()
-    pipe = hf_pipeline("image-text-to-text", model=MODEL_ID)
+    try:
+        pipe = hf_pipeline("image-text-to-text", model=MODEL_ID, torch_dtype=dtype, device=device)
+    except Exception:
+        print("[MedGemma] GPU load failed, falling back to CPU ...")
+        pipe = hf_pipeline("image-text-to-text", model=MODEL_ID)
+    try:
+        if pipe.tokenizer is not None:
+            pipe.tokenizer.padding_side = "left"
+    except Exception:
+        pass
     print(f"[MedGemma] Ready in {time.time()-t0:.1f}s")
     return pipe
 
