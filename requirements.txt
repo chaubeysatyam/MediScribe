@@ -1,0 +1,12 @@
+torch>=2.6
+torchvision
+transformers>=4.50.0
+accelerate
+bitsandbytes
+huggingface_hub
+faster-whisper
+uvicorn
+fastapi
+python-multipart
+pydantic
+python-dotenv
