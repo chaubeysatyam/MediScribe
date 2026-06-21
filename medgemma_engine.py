@@ -2,39 +2,49 @@ import json
 import re
 import time
 import traceback
-import torch
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from models import ClinicalEntity, SOAPNote, ClinicalAlert, ICD10Code, ImagingSuggestion, ImageAnalysis, EncounterResult
 
 pipe = None
 MODEL_ID = "google/medgemma-4b-it"
-_executor = ThreadPoolExecutor(max_workers=4)
 
 
 def load_medgemma():
+    """Load MedGemma using the pipeline() API - confirmed working."""
     global pipe
     from transformers import pipeline as hf_pipeline
-    print(f"[MedGemma] Loading {MODEL_ID} on GPU ...")
+    print(f"[MedGemma] Loading {MODEL_ID} via pipeline ...")
     t0 = time.time()
-    pipe = hf_pipeline(
-        "image-text-to-text",
-        model=MODEL_ID,
-        torch_dtype=torch.bfloat16,
-        device_map="cuda",
-    )
-    print(f"[MedGemma] Ready on GPU in {time.time()-t0:.1f}s")
+    pipe = hf_pipeline("image-text-to-text", model=MODEL_ID)
+    print(f"[MedGemma] Ready in {time.time()-t0:.1f}s")
     return pipe
 
 
+# ---------------------------------------------------------------------------
+# Generation helpers
+# ---------------------------------------------------------------------------
+
 def _generate(prompt, max_tokens=1024):
+    """Generate text using the pipeline (single prompt)."""
     if pipe is None:
-        raise RuntimeError("MedGemma not loaded.")
+        raise RuntimeError("MedGemma not loaded. Run Cell 6 first.")
     messages = [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
     result = pipe(text=messages, max_new_tokens=max_tokens)
     return result[0]["generated_text"][-1]["content"].strip()
 
 
 def _generate_batch(prompts, max_tokens_list):
+    """Generate text for multiple prompts in a single batched pipeline call.
+
+    Falls back to sequential _generate() if batching fails for any reason
+    (OOM, shape mismatch, unsupported by pipeline, etc.).
+
+    Args:
+        prompts: list of prompt strings
+        max_tokens_list: list of max_new_tokens per prompt (same length as prompts)
+
+    Returns:
+        list of generated text strings (same order as prompts)
+    """
     if pipe is None:
         raise RuntimeError("MedGemma not loaded.")
     if len(prompts) == 0:
@@ -42,6 +52,8 @@ def _generate_batch(prompts, max_tokens_list):
     if len(prompts) == 1:
         return [_generate(prompts[0], max_tokens_list[0])]
 
+    # Use the maximum token limit across all prompts in the batch
+    # (HF pipeline applies the same max_new_tokens to all batch elements)
     max_tokens = max(max_tokens_list)
 
     try:
@@ -68,12 +80,18 @@ def _generate_batch(prompts, max_tokens_list):
         return outputs
 
 
+# ---------------------------------------------------------------------------
+# JSON parsing
+# ---------------------------------------------------------------------------
+
 def _parse_json(text):
+    """Try to extract JSON from model output."""
     raw = text.strip()
     try:
         return json.loads(raw)
     except Exception:
         pass
+    # Try code blocks
     m = re.search(r'```json\s*(.*?)\s*```', text, re.DOTALL)
     if m:
         try:
@@ -86,12 +104,14 @@ def _parse_json(text):
             return json.loads(m.group(1))
         except Exception:
             pass
+    # Try finding a JSON object
     m = re.search(r'\{.*\}', text, re.DOTALL)
     if m:
         try:
             return json.loads(m.group())
         except Exception:
             pass
+    # Try finding a JSON array
     m = re.search(r'\[.*\]', text, re.DOTALL)
     if m:
         try:
@@ -102,6 +122,7 @@ def _parse_json(text):
 
 
 def _flatten_soap_value(v, depth=0):
+    """Recursively convert dicts/lists into clean readable text."""
     if v is None:
         return ""
     if isinstance(v, str):
@@ -116,6 +137,7 @@ def _flatten_soap_value(v, depth=0):
     if isinstance(v, dict):
         parts = []
         for dk, dv in v.items():
+            # Convert snake_case keys to Title Case
             label = dk.replace("_", " ").title()
             flat = _flatten_soap_value(dv, depth + 1)
             if flat:
@@ -123,6 +145,10 @@ def _flatten_soap_value(v, depth=0):
         return "\n".join(parts)
     return str(v)
 
+
+# ---------------------------------------------------------------------------
+# Prompt builders — separated so we can batch-construct prompts
+# ---------------------------------------------------------------------------
 
 def _build_entities_prompt(transcript):
     return ("You are a clinical entity extraction agent. "
@@ -203,7 +229,12 @@ def _build_imaging_prompt(entities, assessment):
             + "\n\nEntities:\n" + json.dumps(entities.model_dump(), indent=2))
 
 
+# ---------------------------------------------------------------------------
+# Result parsers — separated from prompt building for clarity
+# ---------------------------------------------------------------------------
+
 def _parse_entities_result(result):
+    """Parse raw LLM output into a ClinicalEntity object."""
     print(f"[Entities] Raw: {result[:200]}")
     data = _parse_json(result)
     clean = {}
@@ -230,6 +261,7 @@ def _parse_entities_result(result):
 
 
 def _parse_soap_result(result):
+    """Parse raw LLM output into a SOAPNote object."""
     print(f"[SOAP] Raw output ({len(result)} chars): {result[:300]}")
     data = _parse_json(result)
     print(f"[SOAP] Parsed keys: {list(data.keys()) if isinstance(data, dict) else type(data)}")
@@ -243,6 +275,7 @@ def _parse_soap_result(result):
 
 
 def _parse_drug_interactions_result(result):
+    """Parse raw LLM output into a list of ClinicalAlert objects."""
     data = _parse_json(result)
     if isinstance(data, list):
         return [ClinicalAlert(**x) for x in data if isinstance(x, dict)]
@@ -250,6 +283,7 @@ def _parse_drug_interactions_result(result):
 
 
 def _parse_red_flags_result(result):
+    """Parse raw LLM output into a list of ClinicalAlert objects."""
     data = _parse_json(result)
     if isinstance(data, list):
         return [ClinicalAlert(**x) for x in data if isinstance(x, dict)]
@@ -257,6 +291,7 @@ def _parse_red_flags_result(result):
 
 
 def _parse_icd10_result(result):
+    """Parse raw LLM output into a list of ICD10Code objects."""
     print(f"[ICD-10] Raw: {result[:200]}")
     data = _parse_json(result)
     if isinstance(data, list):
@@ -265,6 +300,7 @@ def _parse_icd10_result(result):
 
 
 def _parse_imaging_result(result):
+    """Parse raw LLM output into a list of ImagingSuggestion objects."""
     print(f"[Imaging] Raw: {result[:200]}")
     data = _parse_json(result)
     if isinstance(data, list):
@@ -280,6 +316,10 @@ def _parse_imaging_result(result):
         return out
     return []
 
+
+# ---------------------------------------------------------------------------
+# Legacy standalone functions (still work exactly as before)
+# ---------------------------------------------------------------------------
 
 def extract_entities(transcript):
     result = _generate(_build_entities_prompt(transcript))
@@ -318,6 +358,7 @@ def suggest_imaging(entities, assessment):
 
 
 def analyze_medical_image(image, filename="uploaded_image"):
+    """Analyze a medical image (X-ray, CT, MRI, etc.) using MedGemma vision."""
     if pipe is None:
         raise RuntimeError("MedGemma not loaded.")
 
@@ -349,6 +390,7 @@ def analyze_medical_image(image, filename="uploaded_image"):
 
     data = _parse_json(raw)
 
+    # Sanitize
     clean = {}
     for k in ("image_type", "body_part", "findings", "impression", "recommendations"):
         v = data.get(k, "")
@@ -363,12 +405,18 @@ def analyze_medical_image(image, filename="uploaded_image"):
     return ImageAnalysis(**clean)
 
 
+# ---------------------------------------------------------------------------
+# NSAID-Aspirin cross-check (runs on CPU, no LLM needed)
+# ---------------------------------------------------------------------------
+
 def _check_nsaid_aspirin_crossreactivity(encounter):
+    """Check for NSAID-aspirin cross-reactivity risk. Modifies encounter in-place."""
     try:
         allergies_lower = [a.lower() for a in encounter.entities.allergies]
         aspirin_allergy = any(x in a for a in allergies_lower for x in ("aspirin", "asa", "nsaid"))
         if aspirin_allergy:
             nsaid_terms = ["nsaid", "ibuprofen", "naproxen", "diclofenac", "indomethacin", "celecoxib", "meloxicam", "ketorolac"]
+            # Check BOTH the plan text AND current medications
             plan_lower = encounter.soap_note.plan.lower()
             meds_lower = " ".join(m.lower() for m in encounter.entities.medications)
             combined_text = plan_lower + " " + meds_lower
@@ -389,188 +437,21 @@ def _check_nsaid_aspirin_crossreactivity(encounter):
         print(f"[Pipeline] Allergy cross-check error: {e}")
 
 
-def _run_stage(label, generate_fn, parse_fn):
-    t0 = time.time()
-    try:
-        raw = generate_fn()
-        parsed = parse_fn(raw)
-        ms = round((time.time() - t0) * 1000, 1)
-        return {"ok": True, "result": parsed, "time_ms": ms, "label": label}
-    except Exception as e:
-        ms = round((time.time() - t0) * 1000, 1)
-        print(f"[Pipeline] {label} FAILED: {e}")
-        traceback.print_exc()
-        return {"ok": False, "error": str(e), "time_ms": ms, "label": label}
-
-
-async def run_clinical_pipeline_async(transcript, queue, patient_age=None, patient_sex=None):
-    import asyncio
-    loop = asyncio.get_event_loop()
-    t0 = time.time()
-    encounter = EncounterResult(transcript=transcript)
-    errors = []
-
-    print(f"[Pipeline] pipe is {'LOADED' if pipe is not None else 'NONE'}")
-
-    if pipe is None:
-        encounter.soap_note = SOAPNote(
-            subjective=f"Patient reports: {transcript.strip()}",
-            objective="MedGemma not loaded.",
-            assessment="Run Cell 6 to load MedGemma.",
-            plan="Load AI model then retry.",
-        )
-        encounter.processing_time_ms = round((time.time() - t0) * 1000, 1)
-        await queue.put({"step": 7, "total": 7, "status": "complete", "label": "Pipeline complete",
-               "result": encounter})
-        return encounter
-
-    await queue.put({"step": 1, "total": 7, "status": "running", "label": "Extracting clinical entities..."})
-    step_t0 = time.time()
-    try:
-        raw = await loop.run_in_executor(_executor, lambda: _generate(_build_entities_prompt(transcript)))
-        encounter.entities = _parse_entities_result(raw)
-        step_ms = round((time.time() - step_t0) * 1000, 1)
-        print(f"[Pipeline] 1/6 OK - {len(encounter.entities.symptoms)} symptoms")
-        await queue.put({"step": 1, "total": 7, "status": "done", "label": "Entities extracted", "time_ms": step_ms})
-    except Exception as e:
-        errors.append(f"Entities: {e}")
-        print(f"[Pipeline] 1/6 FAILED: {e}")
-        traceback.print_exc()
-        step_ms = round((time.time() - step_t0) * 1000, 1)
-        await queue.put({"step": 1, "total": 7, "status": "error", "label": f"Entity extraction failed: {e}", "time_ms": step_ms})
-
-    await queue.put({"step": 2, "total": 7, "status": "running", "label": "Generating SOAP note..."})
-    await queue.put({"step": 3, "total": 7, "status": "running", "label": "Checking drug interactions..."})
-    await queue.put({"step": 4, "total": 7, "status": "running", "label": "Checking red flags..."})
-
-    phase2_t0 = time.time()
-
-    async def _do_soap():
-        try:
-            raw = await loop.run_in_executor(_executor, lambda: _generate(_build_soap_prompt(transcript, encounter.entities), 1500))
-            return _parse_soap_result(raw)
-        except Exception as e:
-            errors.append(f"SOAP: {e}")
-            print(f"[Pipeline] SOAP FAILED: {e}")
-            traceback.print_exc()
-            return None
-
-    async def _do_drugs():
-        try:
-            if len(encounter.entities.medications) >= 2:
-                raw = await loop.run_in_executor(_executor, lambda: _generate(_build_drug_interactions_prompt(encounter.entities.medications)))
-                return _parse_drug_interactions_result(raw)
-            return []
-        except Exception as e:
-            errors.append(f"Drugs: {e}")
-            print(f"[Pipeline] Drugs FAILED: {e}")
-            return []
-
-    async def _do_redflags():
-        try:
-            raw = await loop.run_in_executor(_executor, lambda: _generate(_build_red_flags_prompt(encounter.entities)))
-            return _parse_red_flags_result(raw)
-        except Exception as e:
-            errors.append(f"RedFlags: {e}")
-            print(f"[Pipeline] RedFlags FAILED: {e}")
-            return []
-
-    soap_task = asyncio.create_task(_do_soap())
-    drugs_task = asyncio.create_task(_do_drugs())
-    redflags_task = asyncio.create_task(_do_redflags())
-
-    soap_result = await soap_task
-    soap_ms = round((time.time() - phase2_t0) * 1000, 1)
-    if soap_result is not None:
-        encounter.soap_note = soap_result
-        print(f"[Pipeline] 2/6 OK")
-    await queue.put({"step": 2, "total": 7, "status": "done", "label": "SOAP note generated", "time_ms": soap_ms})
-
-    drug_alerts = await drugs_task
-    drugs_ms = round((time.time() - phase2_t0) * 1000, 1)
-    encounter.clinical_alerts.extend(drug_alerts)
-    print(f"[Pipeline] 3/6 OK - {len(drug_alerts)} alerts")
-    await queue.put({"step": 3, "total": 7, "status": "done", "label": "Drug interactions checked", "time_ms": drugs_ms})
-
-    red_flags = await redflags_task
-    rf_ms = round((time.time() - phase2_t0) * 1000, 1)
-    encounter.clinical_alerts.extend(red_flags)
-    print(f"[Pipeline] 4/6 OK - {len(red_flags)} alerts")
-    await queue.put({"step": 4, "total": 7, "status": "done", "label": "Red flags checked", "time_ms": rf_ms})
-
-    await queue.put({"step": 5, "total": 7, "status": "running", "label": "Suggesting ICD-10 codes..."})
-    await queue.put({"step": 6, "total": 7, "status": "running", "label": "Suggesting imaging studies..."})
-
-    phase3_t0 = time.time()
-    entities_json = json.dumps(encounter.entities.model_dump(), indent=2)
-
-    async def _do_icd10():
-        try:
-            if encounter.soap_note.assessment:
-                raw = await loop.run_in_executor(_executor, lambda: _generate(_build_icd10_prompt(encounter.soap_note.assessment, entities_json)))
-                return _parse_icd10_result(raw)
-            return []
-        except Exception as e:
-            errors.append(f"ICD10: {e}")
-            print(f"[Pipeline] ICD10 FAILED: {e}")
-            return []
-
-    async def _do_imaging():
-        try:
-            if encounter.soap_note.assessment:
-                raw = await loop.run_in_executor(_executor, lambda: _generate(_build_imaging_prompt(encounter.entities, encounter.soap_note.assessment)))
-                return _parse_imaging_result(raw)
-            return []
-        except Exception as e:
-            errors.append(f"Imaging: {e}")
-            print(f"[Pipeline] Imaging FAILED: {e}")
-            return []
-
-    icd_task = asyncio.create_task(_do_icd10())
-    img_task = asyncio.create_task(_do_imaging())
-
-    icd_codes = await icd_task
-    icd_ms = round((time.time() - phase3_t0) * 1000, 1)
-    encounter.icd10_codes = icd_codes
-    print(f"[Pipeline] 5/6 OK - {len(icd_codes)} codes")
-    await queue.put({"step": 5, "total": 7, "status": "done", "label": "ICD-10 codes suggested", "time_ms": icd_ms})
-
-    img_suggestions = await img_task
-    img_ms = round((time.time() - phase3_t0) * 1000, 1)
-    encounter.imaging_suggestions = img_suggestions
-    print(f"[Pipeline] 6/6 OK - {len(img_suggestions)} scans")
-    await queue.put({"step": 6, "total": 7, "status": "done", "label": "Imaging suggestions ready", "time_ms": img_ms})
-
-    await queue.put({"step": 7, "total": 7, "status": "running", "label": "Running safety checks..."})
-    step_t0_safety = time.time()
-
-    if not encounter.soap_note.subjective:
-        encounter.soap_note.subjective = f"Patient reports: {transcript.strip()}"
-    if not encounter.soap_note.assessment:
-        encounter.soap_note.assessment = "See transcript above."
-
-    _check_nsaid_aspirin_crossreactivity(encounter)
-
-    if errors:
-        encounter.clinical_alerts.append(ClinicalAlert(
-            alert_type="system", severity="warning",
-            title=f"{len(errors)} step(s) had errors",
-            description="; ".join(errors),
-            recommendation="Check runtime logs.",
-        ))
-
-    encounter.processing_time_ms = round((time.time() - t0) * 1000, 1)
-
-    step_ms_safety = round((time.time() - step_t0_safety) * 1000, 1)
-    await queue.put({"step": 7, "total": 7, "status": "done", "label": "Safety checks complete", "time_ms": step_ms_safety})
-
-    print(f"[Pipeline] Done in {encounter.processing_time_ms}ms, {len(errors)} errors")
-
-    await queue.put({"step": 7, "total": 7, "status": "complete", "label": "Pipeline complete", "result": encounter})
-    return encounter
-
+# ---------------------------------------------------------------------------
+# Streaming pipeline — yields progress events as a generator
+# ---------------------------------------------------------------------------
 
 def run_clinical_pipeline_streaming(transcript, patient_age=None, patient_sex=None):
+    """Run the clinical pipeline, yielding progress events as a generator.
+
+    Each yielded event is a dict with:
+        step     — 1-based step number
+        total    — total number of steps (7)
+        status   — "running" | "done" | "error" | "complete"
+        label    — human-readable description
+        time_ms  — elapsed time for this step (only when status="done")
+        result   — full EncounterResult dict (only when status="complete")
+    """
     t0 = time.time()
     encounter = EncounterResult(transcript=transcript)
     errors = []
@@ -589,6 +470,9 @@ def run_clinical_pipeline_streaming(transcript, patient_age=None, patient_sex=No
                "result": encounter}
         return
 
+    # ====================================================================
+    # PHASE 1: Entity Extraction (must run first — everything depends on it)
+    # ====================================================================
     yield {"step": 1, "total": 7, "status": "running", "label": "Extracting clinical entities..."}
     step_t0 = time.time()
     try:
@@ -607,14 +491,20 @@ def run_clinical_pipeline_streaming(transcript, patient_age=None, patient_sex=No
         yield {"step": 1, "total": 7, "status": "error", "label": f"Entity extraction failed: {e}",
                "time_ms": step_ms}
 
+    # ====================================================================
+    # PHASE 2: SOAP + Drug Interactions + Red Flags (batched — all depend
+    # only on entities, not on each other)
+    # ====================================================================
     yield {"step": 2, "total": 7, "status": "running", "label": "Generating SOAP note, checking drugs & red flags..."}
     step_t0 = time.time()
 
+    # Build all three prompts
     soap_prompt = _build_soap_prompt(transcript, encounter.entities)
     has_drugs = len(encounter.entities.medications) >= 2
     drug_prompt = _build_drug_interactions_prompt(encounter.entities.medications) if has_drugs else None
     redflags_prompt = _build_red_flags_prompt(encounter.entities)
 
+    # Assemble batch
     batch_prompts = [soap_prompt]
     batch_max_tokens = [1500]
     batch_labels = ["soap"]
@@ -628,6 +518,7 @@ def run_clinical_pipeline_streaming(transcript, patient_age=None, patient_sex=No
     batch_max_tokens.append(1024)
     batch_labels.append("redflags")
 
+    # Execute batch
     try:
         batch_results = _generate_batch(batch_prompts, batch_max_tokens)
     except Exception as e:
@@ -636,6 +527,7 @@ def run_clinical_pipeline_streaming(transcript, patient_age=None, patient_sex=No
         traceback.print_exc()
         batch_results = [None] * len(batch_prompts)
 
+    # Parse SOAP (step 2)
     try:
         soap_raw = batch_results[batch_labels.index("soap")]
         if soap_raw is not None:
@@ -652,6 +544,7 @@ def run_clinical_pipeline_streaming(transcript, patient_age=None, patient_sex=No
     yield {"step": 2, "total": 7, "status": "done", "label": "SOAP note generated",
            "time_ms": step_ms}
 
+    # Parse Drug Interactions (step 3)
     yield {"step": 3, "total": 7, "status": "running", "label": "Parsing drug interactions..."}
     step_t0_drugs = time.time()
     try:
@@ -673,6 +566,7 @@ def run_clinical_pipeline_streaming(transcript, patient_age=None, patient_sex=No
     yield {"step": 3, "total": 7, "status": "done", "label": "Drug interactions checked",
            "time_ms": step_ms_drugs}
 
+    # Parse Red Flags (step 4)
     yield {"step": 4, "total": 7, "status": "running", "label": "Parsing red flag symptoms..."}
     step_t0_rf = time.time()
     try:
@@ -691,6 +585,9 @@ def run_clinical_pipeline_streaming(transcript, patient_age=None, patient_sex=No
     yield {"step": 4, "total": 7, "status": "done", "label": "Red flags checked",
            "time_ms": step_ms_rf}
 
+    # ====================================================================
+    # PHASE 3: ICD-10 + Imaging (batched — both depend on SOAP assessment)
+    # ====================================================================
     yield {"step": 5, "total": 7, "status": "running", "label": "Suggesting ICD-10 codes & imaging studies..."}
     step_t0_p3 = time.time()
 
@@ -720,6 +617,7 @@ def run_clinical_pipeline_streaming(transcript, patient_age=None, patient_sex=No
     else:
         batch3_results = []
 
+    # Parse ICD-10 (step 5)
     try:
         if "icd10" in batch3_labels:
             icd_raw = batch3_results[batch3_labels.index("icd10")]
@@ -736,6 +634,7 @@ def run_clinical_pipeline_streaming(transcript, patient_age=None, patient_sex=No
     yield {"step": 5, "total": 7, "status": "done", "label": "ICD-10 codes suggested",
            "time_ms": step_ms_p3}
 
+    # Parse Imaging (step 6)
     yield {"step": 6, "total": 7, "status": "running", "label": "Parsing imaging recommendations..."}
     step_t0_img = time.time()
     try:
@@ -754,6 +653,9 @@ def run_clinical_pipeline_streaming(transcript, patient_age=None, patient_sex=No
     yield {"step": 6, "total": 7, "status": "done", "label": "Imaging suggestions ready",
            "time_ms": step_ms_img}
 
+    # ====================================================================
+    # SAFETY NET + NSAID cross-check (no LLM, just CPU logic)
+    # ====================================================================
     yield {"step": 7, "total": 7, "status": "running", "label": "Running safety checks..."}
     step_t0_safety = time.time()
 
@@ -780,15 +682,25 @@ def run_clinical_pipeline_streaming(transcript, patient_age=None, patient_sex=No
 
     print(f"[Pipeline] Done in {encounter.processing_time_ms}ms, {len(errors)} errors")
 
+    # Final event with the full result
     yield {"step": 7, "total": 7, "status": "complete", "label": "Pipeline complete",
            "result": encounter}
 
 
+# ---------------------------------------------------------------------------
+# Backward-compatible wrapper — consumes the generator, returns result
+# ---------------------------------------------------------------------------
+
 def run_clinical_pipeline(transcript, patient_age=None, patient_sex=None):
+    """Run the full clinical pipeline (non-streaming). Returns EncounterResult.
+
+    This wraps run_clinical_pipeline_streaming() for backward compatibility.
+    """
     result = None
     for event in run_clinical_pipeline_streaming(transcript, patient_age, patient_sex):
         if event.get("status") == "complete" and "result" in event:
             result = event["result"]
     if result is None:
+        # Shouldn't happen, but safety fallback
         result = EncounterResult(transcript=transcript)
     return result

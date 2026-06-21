@@ -195,8 +195,6 @@ function showProcessing() {
     });
     if (processingProgressBar) processingProgressBar.style.width = "0%";
     if (processingElapsed) processingElapsed.textContent = "0.0s";
-    _stepStates = {};
-    _doneCount = 0;
 
     const startTime = Date.now();
     if (elapsedInterval) clearInterval(elapsedInterval);
@@ -213,48 +211,43 @@ function hideProcessing() {
     if (elapsedInterval) { clearInterval(elapsedInterval); elapsedInterval = null; }
 }
 
-let _stepStates = {};
-let _doneCount = 0;
-
 function applyStepEvent(event) {
     const step = event.step;
     const total = event.total || 7;
     const status = event.status;
 
-    if (status === "running" && !_stepStates[step]) {
-        _stepStates[step] = "running";
-    }
-    if (status === "done" || status === "error") {
-        if (_stepStates[step] !== "done" && _stepStates[step] !== "error") {
-            _doneCount++;
-        }
-        _stepStates[step] = status;
-    }
-
-    const s = $(`#step${step}`);
-    if (s) {
-        if (status === "done") {
+    for (let i = 1; i <= 10; i++) {
+        const s = $(`#step${i}`);
+        if (!s) continue;
+        if (i < step) {
             s.classList.remove("active", "error");
             s.classList.add("done");
-            const timeEl = s.querySelector(".step-time");
-            if (timeEl && event.time_ms != null) {
-                timeEl.textContent = `${(event.time_ms / 1000).toFixed(1)}s`;
-            }
-        } else if (status === "error") {
-            s.classList.remove("active", "done");
-            s.classList.add("error");
-            const timeEl = s.querySelector(".step-time");
-            if (timeEl && event.time_ms != null) {
-                timeEl.textContent = `${(event.time_ms / 1000).toFixed(1)}s`;
+        } else if (i === step) {
+            if (status === "done") {
+                s.classList.remove("active", "error");
+                s.classList.add("done");
+                const timeEl = s.querySelector(".step-time");
+                if (timeEl && event.time_ms != null) {
+                    timeEl.textContent = `${(event.time_ms / 1000).toFixed(1)}s`;
+                }
+            } else if (status === "error") {
+                s.classList.remove("active", "done");
+                s.classList.add("error");
+                const timeEl = s.querySelector(".step-time");
+                if (timeEl && event.time_ms != null) {
+                    timeEl.textContent = `${(event.time_ms / 1000).toFixed(1)}s`;
+                }
+            } else {
+                s.classList.add("active");
+                s.classList.remove("done", "error");
             }
         } else {
-            s.classList.add("active");
-            s.classList.remove("done", "error");
+            s.classList.remove("active", "done", "error");
         }
     }
 
     if (status === "done" || status === "error") {
-        const pct = Math.min(Math.round((_doneCount / total) * 100), 100);
+        const pct = Math.min(Math.round((step / total) * 100), 100);
         if (processingProgressBar) processingProgressBar.style.width = `${pct}%`;
     }
 }

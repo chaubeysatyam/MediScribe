@@ -12,20 +12,21 @@ def load_whisper(model_size="base"):
     if whisper_model is not None:
         print("[Whisper] Already loaded.")
         return
-    device = "cuda"
-    ct = "float16"
-    if not torch.cuda.is_available():
-        device = "cpu"
-        ct = "int8"
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    ct = "float16" if device == "cuda" else "int8"
     print(f"[Whisper] Loading {model_size} on {device} ({ct}) ...")
     t0 = time.time()
-    whisper_model = WhisperModel(model_size, device=device, compute_type=ct)
-    print(f"[Whisper] Ready on {device} in {time.time()-t0:.1f}s")
+    try:
+        whisper_model = WhisperModel(model_size, device=device, compute_type=ct)
+    except Exception:
+        print("[Whisper] GPU failed, falling back to CPU ...")
+        whisper_model = WhisperModel(model_size, device="cpu", compute_type="int8")
+    print(f"[Whisper] Ready in {time.time()-t0:.1f}s")
 
 
 def transcribe_audio(audio_bytes, language="en"):
     if whisper_model is None:
-        raise RuntimeError("Whisper not loaded.")
+        raise RuntimeError("Whisper not loaded. Run Cell 7 first.")
     with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as f:
         f.write(audio_bytes)
         tmp = f.name
