@@ -205,7 +205,7 @@ flowchart LR
 
 #### Step 1 — Install Dependencies
 ```bash
-python 1stcell.PY
+python 1stcell.py
 ```
 > Restart your terminal/Python environment after this step
 
